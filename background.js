@@ -31,6 +31,10 @@ const DEFAULT_SETTINGS = {
     // (possibly overridden) prompt is what's actually used.
     customPrompts: {},
     requestFormat: 'auto', // 'auto' (detect from model), 'default', 'translategemma', 'hunyuan', 'simple', 'custom'
+    // Reasoning effort for thinking models: 'none' | 'low' | 'medium' | 'high'.
+    // 'none' by default — reasoning models otherwise burn thousands of hidden
+    // reasoning tokens before every translation, at massive speed cost.
+    reasoningEffort: 'none',
     temperature: 0.3,
     useStructuredOutput: true,
     maxOutputRetries: 2,    // Extra attempts when the model returns malformed/missing translations
@@ -796,6 +800,12 @@ async function callOllama(settings, modelId, systemPrompt, userPrompt, jsonOutpu
         stream: false
     };
 
+    // Mirror the LM Studio reasoning-effort control: Ollama maps 'none' to
+    // think=false for thinking models; other levels are passed through as-is.
+    if (settings.reasoningEffort) {
+        body.think = settings.reasoningEffort !== 'none';
+    }
+
     // Request a schema-constrained JSON object when the caller wants structure.
     // Passing the full schema (not just 'json') makes Ollama enforce the shape,
     // not just valid-JSON-ness.
@@ -879,6 +889,13 @@ async function callLMStudio(settings, modelId, systemPrompt, userPrompt, jsonOut
         temperature: settings.temperature || 0.3,
         stream: false
     };
+
+    // Reasoning-effort control for thinking models. 'none' skips the hidden
+    // reasoning pass entirely (LM Studio supports this on OpenAI-compatible
+    // endpoints); higher values trade speed for quality on hard sentences.
+    if (settings.reasoningEffort) {
+        body.reasoning_effort = settings.reasoningEffort;
+    }
 
     if (jsonOutput) {
         body.response_format = {
