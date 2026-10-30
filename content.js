@@ -1429,7 +1429,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 maxConcurrentRequests = Math.max(1, Math.min(32, message.maxConcurrentRequests));
             }
             if (message.maxItemsPerBatch !== undefined) {
-                maxItemsPerBatch = Math.max(1, Math.min(50, message.maxItemsPerBatch));
+                maxItemsPerBatch = Math.max(1, Math.min(500, message.maxItemsPerBatch));
             }
             translatePage(message.targetLanguage, message.sourceLanguage, true);
             sendResponse({ started: true });
@@ -1441,7 +1441,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 maxConcurrentRequests = Math.max(1, Math.min(32, message.maxConcurrentRequests));
             }
             if (message.maxItemsPerBatch !== undefined) {
-                maxItemsPerBatch = Math.max(1, Math.min(50, message.maxItemsPerBatch));
+                maxItemsPerBatch = Math.max(1, Math.min(500, message.maxItemsPerBatch));
             }
             translateSelection(message.targetLanguage, message.sourceLanguage);
             sendResponse({ started: true });
