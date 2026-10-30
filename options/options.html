@@ -331,8 +331,10 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label for="maxTokens">Max Tokens per Batch</label>
-                            <input type="number" id="maxTokens" min="100" max="8000" step="100">
-                            <p class="hint">Higher values = fewer API calls, but may hit model limits.</p>
+                            <input type="number" id="maxTokens" min="256" max="8192" step="100">
+                            <p class="hint">Output token budget per request — batches are split so each request's
+                                translation fits within this. Keep it under your server's context size divided by
+                                concurrent requests.</p>
                         </div>
 
                         <div class="form-group">
