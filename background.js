@@ -1038,7 +1038,7 @@ function hashString(str) {
     return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
 }
 
-async function translate(textItems, targetLanguage, settings) {
+async function translate(textItems, targetLanguage, settings, options = {}) {
     const modelId = settings.selectedModel;
     if (!modelId) throw new Error('No model selected');
 
@@ -1226,22 +1226,48 @@ async function translate(textItems, targetLanguage, settings) {
     const subBatches = splitByTokenBudget(pending, tokenBudget);
     debugLog(`[Background] translate: provider=${provider} model=${modelId} format=${format} items=${textItems.length} json=${wantJson} requests=${subBatches.length} (token budget ${tokenBudget})`);
 
+    // Sub-batches run through a small worker pool so a single large batch still
+    // uses all Max Concurrent Requests slots. When the content script has
+    // several batches in flight itself it reports a sibling count, and the
+    // slots are divided between them to avoid oversubscribing the server.
+    const siblings = Math.max(1, options.siblingRequests || 1);
+    const totalConcurrency = Math.max(1, settings.maxConcurrentRequests || 4);
+    const poolSize = Math.max(1, Math.min(subBatches.length, Math.floor(totalConcurrency / siblings)));
+    if (subBatches.length > 1) {
+        debugLog(`[Background] running ${subBatches.length} request(s) with pool size ${poolSize} (${siblings} sibling batch(es))`);
+    }
+
     // Items that survived every retry in their sub-batch, for the per-item
     // fallback below.
     const unresolvedItems = [];
-    for (let subBatch of subBatches) {
+
+    // First fatal transport error (server down etc.) - rethrown after the pool
+    // drains so already-successful sub-batches keep their results.
+    let fatalError = null;
+
+    const runSubBatch = async (subBatch) => {
         for (let attempt = 0; attempt <= maxRetries && subBatch.length > 0; attempt++) {
             let good;
             try {
                 good = await requestBatch(subBatch);
             } catch (e) {
-                if (attempt === maxRetries) throw e; // bubble transport errors on last try
+                if (attempt === maxRetries) throw e; // transport errors bubble to the worker
                 debugWarn(`[Background] batch attempt ${attempt + 1} threw:`, e.message);
                 continue;
             }
+            // Resolve newly-good items and stream them to the page right away —
+            // the full batch response still drives bookkeeping (progress, failures).
+            const newlyResolved = [];
             for (const item of subBatch) {
                 const text = good.get(item.id);
-                if (text !== undefined) results.set(item.id, text);
+                if (text !== undefined) {
+                    results.set(item.id, text);
+                    newlyResolved.push({ id: item.id, text });
+                }
+            }
+            if (newlyResolved.length > 0 && options.onPartial) {
+                try { await options.onPartial(newlyResolved); }
+                catch (e) { debugWarn('[Background] partial-apply push failed:', e.message); }
             }
             subBatch = subBatch.filter(item => !results.has(item.id));
             if (subBatch.length) {
@@ -1257,7 +1283,23 @@ async function translate(textItems, targetLanguage, settings) {
             }
         }
         unresolvedItems.push(...subBatch);
-    }
+    };
+
+    const queue = [...subBatches];
+    const runWorker = async () => {
+        while (queue.length > 0 && !fatalError) {
+            const subBatch = queue.shift();
+            try {
+                await runSubBatch(subBatch);
+            } catch (e) {
+                if (!fatalError) fatalError = e;
+                // Server is likely down - stop pulling more work.
+                return;
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: poolSize }, () => runWorker()));
+    if (fatalError) throw fatalError;
 
     // Per-item fallback: translate the still-failing items one at a time, with no
     // batch structure to parse. Plain-text formats need this too — they carry the
@@ -1413,10 +1455,24 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         };
                     }
 
+                    // Stream each sub-batch's results to the page as they resolve,
+                    // so a big batch paints progressively instead of all at once.
+                    // The final response below still carries everything.
+                    const onPartial = (sender && sender.tab && typeof sender.tab.id === 'number')
+                        ? (translations) => browserAPI.tabs.sendMessage(sender.tab.id, {
+                            type: 'APPLY_PARTIAL_TRANSLATIONS',
+                            translations
+                        })
+                        : null;
+
                     const result = await translate(
                         message.texts,
                         message.targetLanguage,
-                        settingsWithSource
+                        settingsWithSource,
+                        {
+                            onPartial,
+                            siblingRequests: Math.max(1, message.siblingRequests || 1)
+                        }
                     );
                     sendResponse({
                         translations: result.translations,
