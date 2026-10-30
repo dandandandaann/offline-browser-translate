@@ -1530,7 +1530,8 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
                     targetLanguage: settings.targetLanguage,
                     sourceLanguage: sourceLang || 'auto', // Use detected or fall back to auto
                     showGlow: settings.showGlow,
-                    maxConcurrentRequests: settings.maxConcurrentRequests || 4
+                    maxConcurrentRequests: settings.maxConcurrentRequests || 4,
+                    maxItemsPerBatch: settings.maxItemsPerBatch || 8
                 });
             };
 
@@ -1584,7 +1585,8 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
                     targetLanguage: settings.targetLanguage,
                     sourceLanguage: sourceLang || 'auto',
                     showGlow: settings.showGlow,
-                    maxConcurrentRequests: settings.maxConcurrentRequests || 4
+                    maxConcurrentRequests: settings.maxConcurrentRequests || 4,
+                    maxItemsPerBatch: settings.maxItemsPerBatch || 8
                 });
             };
 

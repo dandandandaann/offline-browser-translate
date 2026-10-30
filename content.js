@@ -55,6 +55,7 @@ let nextNodeId = 0;
 let nextSegmentId = 0;
 let currentTargetLanguage = 'en';
 let maxConcurrentRequests = 4; // Default parallel requests (1-32, tunable in Settings > Performance)
+let maxItemsPerBatch = 8;      // Default segments per request (tunable in Settings > Performance)
 let autoTranslateEnabled = false;
 let showGlow = false; // Setting for glow effect (disabled by default)
 let mutationObserver = null;
@@ -1135,7 +1136,7 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
         let totalFromCache = 0; // Elements served from the translation cache
         let cacheActive = false; // Whether the cache was on for this run
         const totalItems = textItems.length;
-        const batchSize = 8; // Process in batches
+        const batchSize = maxItemsPerBatch; // Process in batches
         const failedItems = []; // Track items that failed for potential retry
         let inFlightBatches = []; // Track in-flight batch promises
 
@@ -1373,7 +1374,7 @@ async function translateSelection(targetLanguage, sourceLanguage = 'auto') {
         updateProgressWidget(0, `Translating ${textItems.length} selected elements...`);
 
         let totalApplied = 0;
-        const batchSize = 8;
+        const batchSize = maxItemsPerBatch;
         const failedItems = [];
 
         // Started alongside (not before) the real requests below - LM Studio
@@ -1427,6 +1428,9 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (message.maxConcurrentRequests !== undefined) {
                 maxConcurrentRequests = Math.max(1, Math.min(32, message.maxConcurrentRequests));
             }
+            if (message.maxItemsPerBatch !== undefined) {
+                maxItemsPerBatch = Math.max(1, Math.min(50, message.maxItemsPerBatch));
+            }
             translatePage(message.targetLanguage, message.sourceLanguage, true);
             sendResponse({ started: true });
             break;
@@ -1435,6 +1439,9 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (message.showGlow !== undefined) showGlow = message.showGlow;
             if (message.maxConcurrentRequests !== undefined) {
                 maxConcurrentRequests = Math.max(1, Math.min(32, message.maxConcurrentRequests));
+            }
+            if (message.maxItemsPerBatch !== undefined) {
+                maxItemsPerBatch = Math.max(1, Math.min(50, message.maxItemsPerBatch));
             }
             translateSelection(message.targetLanguage, message.sourceLanguage);
             sendResponse({ started: true });
